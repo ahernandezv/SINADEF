@@ -1,0 +1,55 @@
+
+library(dplyr)
+library(readxl)
+
+download.file("https://cloud.minsa.gob.pe/s/nqF2irNbFomCLaa/download",destfile="SINADEF.csv")
+download.file("https://covid19.minsa.gob.pe/files/CASOS_27072020.xlsx",destfile="MINSA.xlsx",mode="wb")
+
+datos.sinadef = read.csv("SINADEF.csv",sep=";",skip=2)
+datos.minsa   = read_xlsx("MINSA.xlsx")
+
+datos.minsa = datos.minsa %>%
+  add_row(Pais   = "PERÚ",
+          Región = "LIMA",
+          `PCR   (+)` = datos.minsa$`PCR   (+)`[1] + datos.minsa$`PCR   (+)`[26],
+          `PRUEBA RÁPIDA (+)` = datos.minsa$`PRUEBA RÁPIDA (+)`[1] + datos.minsa$`PRUEBA RÁPIDA (+)`[26],
+          `TOTAL CASOS (+)` = datos.minsa$`TOTAL CASOS (+)`[1] + datos.minsa$`TOTAL CASOS (+)`[26],
+          FALLECIDOS = datos.minsa$FALLECIDOS[1] + datos.minsa$FALLECIDOS[26],
+          `LETALIDAD (%)` = datos.minsa$`LETALIDAD (%)`[1] + datos.minsa$`LETALIDAD (%)`[26])
+
+datos.2020 = datos.sinadef %>%
+  filter(AÑO=="2020") %>%
+  filter(FECHA>="2020-03-06") %>%
+  filter(!DEPARTAMENTO.DOMICILIO=="EXTRANJERO") %>%
+  select(FECHA,DEPARTAMENTO.DOMICILIO,CAUSA.A..CIE.X.,CAUSA.B..CIE.X.,
+         CAUSA.C..CIE.X.,CAUSA.D..CIE.X.,CAUSA.E..CIE.X.,CAUSA.F..CIE.X.) %>%
+  mutate(Confirmados = ifelse((CAUSA.A..CIE.X.=="U071")|
+                         (CAUSA.B..CIE.X.=="U071")|
+                         (CAUSA.C..CIE.X.=="U071")|
+                         (CAUSA.D..CIE.X.=="U071")|
+                         (CAUSA.E..CIE.X.=="U071")|
+                         (CAUSA.F..CIE.X.=="U071"),1,0),
+         Sospechoso = ifelse((CAUSA.A..CIE.X.=="U072")|
+                         (CAUSA.B..CIE.X.=="U072")|
+                         (CAUSA.C..CIE.X.=="U072")|
+                         (CAUSA.D..CIE.X.=="U072")|
+                         (CAUSA.E..CIE.X.=="U072")|
+                         (CAUSA.F..CIE.X.=="U072"),1,0))
+
+
+tabla = datos.2020 %>%
+  select(DEPARTAMENTO.DOMICILIO,Confirmados,Sospechoso) %>%
+  group_by(DEPARTAMENTO.DOMICILIO) %>%
+  summarise(N_confirmados = sum(Confirmados),
+            N_sospechosos = sum(Sospechoso),
+            N_total  = N_confirmados+N_sospechosos) %>%
+  left_join(datos.minsa, by=c("DEPARTAMENTO.DOMICILIO"="Región")) %>%
+  select(DEPARTAMENTO.DOMICILIO,N_confirmados,N_sospechosos,N_total,FALLECIDOS) %>%
+  rename(N_MINSA=FALLECIDOS) %>%
+  mutate(Diferencia=N_MINSA-N_total) %>%
+  arrange(desc(N_total))
+ 
+
+print(tabla,n=30)
+
+write.csv(tabla,"tabla.csv")
